@@ -53,34 +53,12 @@ jobs:
       - name: Locate libc++ headers for iPhoneOS
         run: |
           echo "::group::Locate libc++ headers (iPhoneOS)"
-
-          XCODE_DEV="$(xcode-select -p)"
-          echo "Xcode developer dir: $XCODE_DEV"
-          xcodebuild -version
-
           IOS_SDK_ROOT="$(xcrun --sdk iphoneos --show-sdk-path)"
+          LIBCXX_INC="$IOS_SDK_ROOT/usr/include/c++/v1"
           echo "iPhoneOS SDK root: $IOS_SDK_ROOT"
-
-          CANDIDATE_1="$IOS_SDK_ROOT/usr/include/c++/v1/string"
-          if [[ -f "$CANDIDATE_1" ]]; then
-            LIBCXX_INC="$(dirname "$CANDIDATE_1")"
-          else
-            IOS_PLATFORM="$XCODE_DEV/Platforms/iPhoneOS.platform"
-            echo "Searching under: $IOS_PLATFORM"
-            STRING_HDR="$(/usr/bin/find "$IOS_PLATFORM" -type f -path '*/usr/include/c++/v1/string' -print -quit)"
-            if [[ -z "$STRING_HDR" ]]; then
-              echo "ERROR: Could not locate libc++ header 'string' for iPhoneOS."
-              echo "As a fallback, show any platform hits (first 10):"
-              /usr/bin/find "$XCODE_DEV/Platforms" -type f -path '*/usr/include/c++/v1/string' | head -n 10 || true
-              exit 1
-            fi
-            LIBCXX_INC="$(dirname "$STRING_HDR")"
-          fi
-
           echo "LIBCXX_INC=$LIBCXX_INC"
-          echo "LIBCXX_INC=$LIBCXX_INC" >> "$GITHUB_ENV"
           ls -la "$LIBCXX_INC/string"
-
+          echo "LIBCXX_INC=$LIBCXX_INC" >> "$GITHUB_ENV"
           echo "::endgroup::"
 
       - name: Verify Theos install
@@ -93,12 +71,17 @@ jobs:
         run: |
           echo "::group::Build LIBKRW Package"
 
-          export TARGET_CC="$(xcrun --sdk iphoneos --find clang)"
-          export TARGET_CXX="$(xcrun --sdk iphoneos --find clang++)"
+          TARGET_CC="$(xcrun --sdk iphoneos --find clang)"
+          TARGET_CXX="$(xcrun --sdk iphoneos --find clang++)"
+
+          # libc++ headers (confirmed to exist)
+          COMMON_CPPFLAGS="-isystem $LIBCXX_INC"
+          COMMON_CXXFLAGS="-isystem $LIBCXX_INC -stdlib=libc++"
 
           echo "TARGET_CC=$TARGET_CC"
           echo "TARGET_CXX=$TARGET_CXX"
           echo "LIBCXX_INC=$LIBCXX_INC"
+          ls -la "$LIBCXX_INC/string"
 
           rm -rf packages
           mkdir -p packages
@@ -106,12 +89,17 @@ jobs:
           cp control.template control
           sed -i '' 's/{{.depends}}/libkrw/g' control
 
-          # Use Theos-native variables so the include path actually propagates to all subprojects/instances
           USE_LIBKRW=1 gmake -j"$(sysctl -n hw.ncpu)" \
+            CC="$TARGET_CC" \
+            CXX="$TARGET_CXX" \
             TARGET_CC="$TARGET_CC" \
             TARGET_CXX="$TARGET_CXX" \
-            TARGET_CPPFLAGS="-isystem $LIBCXX_INC" \
-            TARGET_CXXFLAGS="-isystem $LIBCXX_INC -stdlib=libc++" \
+            CPPFLAGS="$COMMON_CPPFLAGS" \
+            CXXFLAGS="$COMMON_CXXFLAGS" \
+            TARGET_CPPFLAGS="$COMMON_CPPFLAGS" \
+            TARGET_CXXFLAGS="$COMMON_CXXFLAGS" \
+            ADDITIONAL_CFLAGS="$COMMON_CPPFLAGS" \
+            ADDITIONAL_CXXFLAGS="$COMMON_CXXFLAGS" \
             package FINALPACKAGE=1
 
           echo "::endgroup::"
