@@ -42,6 +42,13 @@ jobs:
           git clone --recursive https://github.com/theos/theos.git $THEOS
           echo "::endgroup::"
 
+      - name: Install Theos SDKs
+        run: |
+          echo "::group::Install Theos SDKs"
+          git clone https://github.com/theos/sdks.git $THEOS/sdks
+          ls -la $THEOS/sdks
+          echo "::endgroup::"
+
       - name: Verify Theos install
         run: |
           echo "::group::Verify THEOS"
@@ -51,6 +58,10 @@ jobs:
       - name: Build LIBKRW package
         run: |
           echo "::group::Build LIBKRW Package"
+
+          # Force use of Theos SDKs (not system SDK)
+          export THEOS_USE_SYSTEM_SDKS=0
+
           rm -rf packages
           mkdir -p packages
 
@@ -58,6 +69,7 @@ jobs:
           sed -i '' 's/{{.depends}}/libkrw/g' control
 
           USE_LIBKRW=1 gmake -j$(sysctl -n hw.ncpu) package FINALPACKAGE=1
+
           echo "::endgroup::"
 
       - name: Upload artifacts
