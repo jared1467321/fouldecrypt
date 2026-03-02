@@ -50,30 +50,37 @@ jobs:
           git clone https://github.com/theos/sdks.git "$THEOS/sdks"
           echo "::endgroup::"
 
-      - name: Locate libc++ headers (<string>)
+      - name: Locate libc++ headers for iPhoneOS
         run: |
-          echo "::group::Locate libc++ headers"
+          echo "::group::Locate libc++ headers (iPhoneOS)"
 
-          # Where is the active Xcode?
-          XCODE_APP="$(xcode-select -p | sed 's#/Contents/Developer##')"
-          echo "Xcode app: $XCODE_APP"
+          XCODE_DEV="$(xcode-select -p)"
+          echo "Xcode developer dir: $XCODE_DEV"
           xcodebuild -version
 
-          # Find the first match for libc++ <string>
-          STRING_HDR="$(/usr/bin/find "$XCODE_APP" -type f -path '*/c++/v1/string' -print -quit)"
-          if [[ -z "$STRING_HDR" ]]; then
-            echo "ERROR: Could not locate libc++ header 'c++/v1/string' inside $XCODE_APP"
-            echo "Dumping a few likely directories for debugging:"
-            ls -la "$XCODE_APP/Contents/Developer/Toolchains" || true
-            ls -la "$XCODE_APP/Contents/Developer/Platforms" || true
-            exit 1
+          # Prefer iPhoneOS platform libc++ headers if present
+          IOS_SDK_ROOT="$(xcrun --sdk iphoneos --show-sdk-path)"
+          echo "iPhoneOS SDK root: $IOS_SDK_ROOT"
+
+          CANDIDATE_1="$IOS_SDK_ROOT/usr/include/c++/v1/string"
+          if [[ -f "$CANDIDATE_1" ]]; then
+            LIBCXX_INC="$(dirname "$CANDIDATE_1")"
+          else
+            # Otherwise, search only inside the iPhoneOS platform directory
+            IOS_PLATFORM="$XCODE_DEV/Platforms/iPhoneOS.platform"
+            echo "Searching under: $IOS_PLATFORM"
+            STRING_HDR="$(/usr/bin/find "$IOS_PLATFORM" -type f -path '*/usr/include/c++/v1/string' -print -quit)"
+            if [[ -z "$STRING_HDR" ]]; then
+              echo "ERROR: Could not locate libc++ header 'string' for iPhoneOS."
+              echo "As a fallback, show any platform hits (first 10):"
+              /usr/bin/find "$XCODE_DEV/Platforms" -type f -path '*/usr/include/c++/v1/string' | head -n 10 || true
+              exit 1
+            fi
+            LIBCXX_INC="$(dirname "$STRING_HDR")"
           fi
 
-          LIBCXX_INC="$(dirname "$STRING_HDR")"
-          echo "Found: $STRING_HDR"
+          echo "LIBCXX_INC=$LIBCXX_INC"
           echo "LIBCXX_INC=$LIBCXX_INC" >> "$GITHUB_ENV"
-
-          # Quick sanity check
           ls -la "$LIBCXX_INC/string"
 
           echo "::endgroup::"
@@ -101,11 +108,11 @@ jobs:
           cp control.template control
           sed -i '' 's/{{.depends}}/libkrw/g' control
 
-          USE_LIBKRW=1 gmake -j"$(sysctl -n hw.ncpu)" \
-            TARGET_CC="$TARGET_CC" \
-            TARGET_CXX="$TARGET_CXX" \
-            ADDITIONAL_CXXFLAGS="-isystem $LIBCXX_INC" \
-            package FINALPACKAGE=1
+          # Use CXXFLAGS/CPPFLAGS to ensure the include path propagates everywhere
+          export CPPFLAGS="-isystem $LIBCXX_INC"
+          export CXXFLAGS="-isystem $LIBCXX_INC -stdlib=libc++"
+
+          USE_LIBKRW=1 gmake -j"$(sysctl -n hw.ncpu)" package FINALPACKAGE=1
 
           echo "::endgroup::"
 
