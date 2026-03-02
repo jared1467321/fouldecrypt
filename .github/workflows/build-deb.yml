@@ -29,17 +29,6 @@ jobs:
           git submodule foreach --recursive git reset --hard
           echo "::endgroup::"
 
-      - name: Select Xcode and show SDKs
-        run: |
-          echo "::group::Xcode / SDK Debug"
-          xcode-select -p
-          xcodebuild -version
-          xcodebuild -showsdks
-          xcrun --sdk iphoneos --show-sdk-path
-          xcrun --sdk iphoneos --find clang
-          xcrun --sdk iphoneos --find clang++
-          echo "::endgroup::"
-
       - name: Install dependencies
         run: |
           echo "::group::Install Dependencies"
@@ -63,19 +52,29 @@ jobs:
           ls -la "$THEOS/sdks"
           echo "::endgroup::"
 
-      - name: Verify Theos install
+      - name: Verify toolchain + libc++ headers
         run: |
-          echo "::group::Verify THEOS"
-          ls -la "$THEOS/makefiles/common.mk"
+          echo "::group::Toolchain Debug"
+          xcode-select -p
+          xcodebuild -version
+          CXX="$(xcrun --sdk iphoneos --find clang++)"
+          echo "clang++: $CXX"
+          TOOLCHAIN_DIR="$(dirname "$(dirname "$CXX")")"
+          echo "toolchain dir: $TOOLCHAIN_DIR"
+          ls -la "$TOOLCHAIN_DIR/usr/include/c++/v1/string"
           echo "::endgroup::"
 
       - name: Build LIBKRW package
         run: |
           echo "::group::Build LIBKRW Package"
 
-          # Force iOS toolchain compilers (these provide libc++ headers like <string>)
-          export CC="$(xcrun --sdk iphoneos --find clang)"
-          export CXX="$(xcrun --sdk iphoneos --find clang++)"
+          # Force iOS compilers from Xcode
+          export TARGET_CC="$(xcrun --sdk iphoneos --find clang)"
+          export TARGET_CXX="$(xcrun --sdk iphoneos --find clang++)"
+
+          # Force libc++ headers (fixes: fatal error: 'string' file not found)
+          TOOLCHAIN_DIR="$(dirname "$(dirname "$TARGET_CXX")")"
+          LIBCXX_INC="$TOOLCHAIN_DIR/usr/include/c++/v1"
 
           rm -rf packages
           mkdir -p packages
@@ -83,7 +82,11 @@ jobs:
           cp control.template control
           sed -i '' 's/{{.depends}}/libkrw/g' control
 
-          USE_LIBKRW=1 gmake -j"$(sysctl -n hw.ncpu)" package FINALPACKAGE=1
+          USE_LIBKRW=1 gmake -j"$(sysctl -n hw.ncpu)" \
+            TARGET_CC="$TARGET_CC" \
+            TARGET_CXX="$TARGET_CXX" \
+            ADDITIONAL_CXXFLAGS="-isystem $LIBCXX_INC" \
+            package FINALPACKAGE=1
 
           echo "::endgroup::"
 
