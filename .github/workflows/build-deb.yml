@@ -1,4 +1,4 @@
-name: Build Fouldecrypt
+name: Build Fouldecrypt (LIBKRW)
 
 on:
   push:
@@ -10,60 +10,49 @@ jobs:
   build:
     runs-on: macos-latest
 
+    env:
+      THEOS: ${{ github.workspace }}/theos
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Set up Homebrew
-        run: |
-          echo "::group::Homebrew Setup"
-          if ! command -v brew &> /dev/null; then
-            /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-          fi
-          echo "::endgroup::"
+        with:
+          submodules: recursive
 
       - name: Install dependencies
         run: |
-          echo "::group::Installing Dependencies"
-          brew install make gpatch libmd ldid dpkg || true
-          echo "Adding GNU make to PATH..."
+          echo "::group::Install Dependencies"
+          brew update
+          brew install make ldid dpkg gpatch libmd
           echo "/opt/homebrew/opt/make/libexec/gnubin" >> $GITHUB_PATH
           echo "::endgroup::"
 
-      - name: Setup Xcode command line tools
+      - name: Clone Theos
         run: |
-          echo "::group::Xcode CLI Tools"
-          sudo xcode-select --install || true
-          sudo xcode-select -s /Applications/Xcode_16.app/Contents/Developer
+          echo "::group::Install Theos"
+          git clone --recursive https://github.com/theos/theos.git $THEOS
           echo "::endgroup::"
 
-      - name: Set THEOS environment
+      - name: Verify Theos install
         run: |
-          echo "::group::Set THEOS Environment"
-          export THEOS="$GITHUB_WORKSPACE/theos"
-          echo "THEOS=$THEOS" >> $GITHUB_ENV
+          echo "::group::Verify THEOS"
+          ls -la $THEOS/makefiles/common.mk
           echo "::endgroup::"
 
-      - name: Build packages
+      - name: Build LIBKRW package
         run: |
-          echo "::group::Build Fouldecrypt Packages"
-          rm -f packages/*
+          echo "::group::Build LIBKRW Package"
+          rm -rf packages
+          mkdir -p packages
+
           cp control.template control
+          sed -i '' 's/{{.depends}}/libkrw/g' control
 
-          PROVIDER="TFP0"
-          if [[ "$PROVIDER" == "TFP0" ]]; then
-            USE_TFP0=1 gmake -j$(sysctl -n hw.ncpu) package FINALPACKAGE=1
-          elif [[ "$PROVIDER" == "LIBKRW" ]]; then
-            sed -i '' 's/{{.depends}}/libkrw/g' control
-            USE_LIBKRW=1 gmake -j$(sysctl -n hw.ncpu) package FINALPACKAGE=1
-          elif [[ "$PROVIDER" == "LIBKERNRW" ]]; then
-            sed -i '' 's/{{.depends}}/libkernrw0/g' control
-            USE_LIBKERNRW=1 gmake -j$(sysctl -n hw.ncpu) package FINALPACKAGE=1
-          fi
+          USE_LIBKRW=1 gmake -j$(sysctl -n hw.ncpu) package FINALPACKAGE=1
           echo "::endgroup::"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: fouldecrypt-packages
-          path: packages/*
+          name: fouldecrypt-libkrw
+          path: packages/*.deb
