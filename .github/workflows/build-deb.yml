@@ -17,7 +17,16 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          submodules: false
+          fetch-depth: 0
+
+      - name: Force sync and update submodules
+        run: |
+          echo "::group::Force Sync Submodules"
+          git submodule sync --recursive
+          git submodule update --init --recursive --force --remote
+          git submodule foreach --recursive git reset --hard
+          echo "::endgroup::"
 
       - name: Install dependencies
         run: |
