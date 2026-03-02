@@ -45,7 +45,13 @@ jobs:
       - name: Install Theos SDKs
         run: |
           echo "::group::Install Theos SDKs"
+
+          # Remove placeholder sdks directory if present
+          rm -rf $THEOS/sdks
+
+          # Clone official SDK mirror
           git clone https://github.com/theos/sdks.git $THEOS/sdks
+
           ls -la $THEOS/sdks
           echo "::endgroup::"
 
@@ -59,7 +65,7 @@ jobs:
         run: |
           echo "::group::Build LIBKRW Package"
 
-          # Force use of Theos SDKs (not system SDK)
+          # Force Theos to use internal SDKs
           export THEOS_USE_SYSTEM_SDKS=0
 
           rm -rf packages
