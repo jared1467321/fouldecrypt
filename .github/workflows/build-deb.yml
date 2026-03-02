@@ -48,25 +48,40 @@ jobs:
           echo "::group::Install Theos SDKs"
           rm -rf "$THEOS/sdks"
           git clone https://github.com/theos/sdks.git "$THEOS/sdks"
-          ls -la "$THEOS/sdks"
           echo "::endgroup::"
 
-      - name: Verify toolchain + libc++ headers
+      - name: Locate libc++ headers (<string>)
         run: |
-          echo "::group::Toolchain Debug"
-          xcode-select -p
+          echo "::group::Locate libc++ headers"
+
+          # Where is the active Xcode?
+          XCODE_APP="$(xcode-select -p | sed 's#/Contents/Developer##')"
+          echo "Xcode app: $XCODE_APP"
           xcodebuild -version
 
-          CXX="$(xcrun --sdk iphoneos --find clang++)"
-          echo "clang++: $CXX"
+          # Find the first match for libc++ <string>
+          STRING_HDR="$(/usr/bin/find "$XCODE_APP" -type f -path '*/c++/v1/string' -print -quit)"
+          if [[ -z "$STRING_HDR" ]]; then
+            echo "ERROR: Could not locate libc++ header 'c++/v1/string' inside $XCODE_APP"
+            echo "Dumping a few likely directories for debugging:"
+            ls -la "$XCODE_APP/Contents/Developer/Toolchains" || true
+            ls -la "$XCODE_APP/Contents/Developer/Platforms" || true
+            exit 1
+          fi
 
-          TOOLCHAIN_ROOT="$(dirname "$(dirname "$(dirname "$CXX")")")"
-          echo "toolchain root: $TOOLCHAIN_ROOT"
+          LIBCXX_INC="$(dirname "$STRING_HDR")"
+          echo "Found: $STRING_HDR"
+          echo "LIBCXX_INC=$LIBCXX_INC" >> "$GITHUB_ENV"
 
-          LIBCXX_INC="$TOOLCHAIN_ROOT/usr/include/c++/v1"
-          echo "libc++ include: $LIBCXX_INC"
-
+          # Quick sanity check
           ls -la "$LIBCXX_INC/string"
+
+          echo "::endgroup::"
+
+      - name: Verify Theos install
+        run: |
+          echo "::group::Verify THEOS"
+          ls -la "$THEOS/makefiles/common.mk"
           echo "::endgroup::"
 
       - name: Build LIBKRW package
@@ -76,8 +91,9 @@ jobs:
           export TARGET_CC="$(xcrun --sdk iphoneos --find clang)"
           export TARGET_CXX="$(xcrun --sdk iphoneos --find clang++)"
 
-          TOOLCHAIN_ROOT="$(dirname "$(dirname "$(dirname "$TARGET_CXX")")")"
-          LIBCXX_INC="$TOOLCHAIN_ROOT/usr/include/c++/v1"
+          echo "TARGET_CC=$TARGET_CC"
+          echo "TARGET_CXX=$TARGET_CXX"
+          echo "LIBCXX_INC=$LIBCXX_INC"
 
           rm -rf packages
           mkdir -p packages
