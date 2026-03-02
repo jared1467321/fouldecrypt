@@ -12,7 +12,6 @@ jobs:
 
     env:
       THEOS: ${{ github.workspace }}/theos
-      DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
 
     steps:
       - name: Checkout repository
@@ -57,24 +56,28 @@ jobs:
           echo "::group::Toolchain Debug"
           xcode-select -p
           xcodebuild -version
+
           CXX="$(xcrun --sdk iphoneos --find clang++)"
           echo "clang++: $CXX"
-          TOOLCHAIN_DIR="$(dirname "$(dirname "$CXX")")"
-          echo "toolchain dir: $TOOLCHAIN_DIR"
-          ls -la "$TOOLCHAIN_DIR/usr/include/c++/v1/string"
+
+          TOOLCHAIN_ROOT="$(dirname "$(dirname "$(dirname "$CXX")")")"
+          echo "toolchain root: $TOOLCHAIN_ROOT"
+
+          LIBCXX_INC="$TOOLCHAIN_ROOT/usr/include/c++/v1"
+          echo "libc++ include: $LIBCXX_INC"
+
+          ls -la "$LIBCXX_INC/string"
           echo "::endgroup::"
 
       - name: Build LIBKRW package
         run: |
           echo "::group::Build LIBKRW Package"
 
-          # Force iOS compilers from Xcode
           export TARGET_CC="$(xcrun --sdk iphoneos --find clang)"
           export TARGET_CXX="$(xcrun --sdk iphoneos --find clang++)"
 
-          # Force libc++ headers (fixes: fatal error: 'string' file not found)
-          TOOLCHAIN_DIR="$(dirname "$(dirname "$TARGET_CXX")")"
-          LIBCXX_INC="$TOOLCHAIN_DIR/usr/include/c++/v1"
+          TOOLCHAIN_ROOT="$(dirname "$(dirname "$(dirname "$TARGET_CXX")")")"
+          LIBCXX_INC="$TOOLCHAIN_ROOT/usr/include/c++/v1"
 
           rm -rf packages
           mkdir -p packages
