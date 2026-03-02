@@ -58,7 +58,6 @@ jobs:
           echo "Xcode developer dir: $XCODE_DEV"
           xcodebuild -version
 
-          # Prefer iPhoneOS platform libc++ headers if present
           IOS_SDK_ROOT="$(xcrun --sdk iphoneos --show-sdk-path)"
           echo "iPhoneOS SDK root: $IOS_SDK_ROOT"
 
@@ -66,7 +65,6 @@ jobs:
           if [[ -f "$CANDIDATE_1" ]]; then
             LIBCXX_INC="$(dirname "$CANDIDATE_1")"
           else
-            # Otherwise, search only inside the iPhoneOS platform directory
             IOS_PLATFORM="$XCODE_DEV/Platforms/iPhoneOS.platform"
             echo "Searching under: $IOS_PLATFORM"
             STRING_HDR="$(/usr/bin/find "$IOS_PLATFORM" -type f -path '*/usr/include/c++/v1/string' -print -quit)"
@@ -108,11 +106,13 @@ jobs:
           cp control.template control
           sed -i '' 's/{{.depends}}/libkrw/g' control
 
-          # Use CXXFLAGS/CPPFLAGS to ensure the include path propagates everywhere
-          export CPPFLAGS="-isystem $LIBCXX_INC"
-          export CXXFLAGS="-isystem $LIBCXX_INC -stdlib=libc++"
-
-          USE_LIBKRW=1 gmake -j"$(sysctl -n hw.ncpu)" package FINALPACKAGE=1
+          # Use Theos-native variables so the include path actually propagates to all subprojects/instances
+          USE_LIBKRW=1 gmake -j"$(sysctl -n hw.ncpu)" \
+            TARGET_CC="$TARGET_CC" \
+            TARGET_CXX="$TARGET_CXX" \
+            TARGET_CPPFLAGS="-isystem $LIBCXX_INC" \
+            TARGET_CXXFLAGS="-isystem $LIBCXX_INC -stdlib=libc++" \
+            package FINALPACKAGE=1
 
           echo "::endgroup::"
 
