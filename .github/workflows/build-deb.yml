@@ -12,6 +12,7 @@ jobs:
 
     env:
       THEOS: ${{ github.workspace }}/theos
+      DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
 
     steps:
       - name: Checkout repository
@@ -28,6 +29,17 @@ jobs:
           git submodule foreach --recursive git reset --hard
           echo "::endgroup::"
 
+      - name: Select Xcode and show SDKs
+        run: |
+          echo "::group::Xcode / SDK Debug"
+          xcode-select -p
+          xcodebuild -version
+          xcodebuild -showsdks
+          xcrun --sdk iphoneos --show-sdk-path
+          xcrun --sdk iphoneos --find clang
+          xcrun --sdk iphoneos --find clang++
+          echo "::endgroup::"
+
       - name: Install dependencies
         run: |
           echo "::group::Install Dependencies"
@@ -39,31 +51,31 @@ jobs:
       - name: Clone Theos
         run: |
           echo "::group::Install Theos"
-          git clone --recursive https://github.com/theos/theos.git $THEOS
+          rm -rf "$THEOS"
+          git clone --recursive https://github.com/theos/theos.git "$THEOS"
           echo "::endgroup::"
 
       - name: Install Theos SDKs
         run: |
           echo "::group::Install Theos SDKs"
-
-          # Remove placeholder sdks directory if present
-          rm -rf $THEOS/sdks
-
-          # Clone official SDK mirror
-          git clone https://github.com/theos/sdks.git $THEOS/sdks
-
-          ls -la $THEOS/sdks
+          rm -rf "$THEOS/sdks"
+          git clone https://github.com/theos/sdks.git "$THEOS/sdks"
+          ls -la "$THEOS/sdks"
           echo "::endgroup::"
 
       - name: Verify Theos install
         run: |
           echo "::group::Verify THEOS"
-          ls -la $THEOS/makefiles/common.mk
+          ls -la "$THEOS/makefiles/common.mk"
           echo "::endgroup::"
 
       - name: Build LIBKRW package
         run: |
           echo "::group::Build LIBKRW Package"
+
+          # Force iOS toolchain compilers (these provide libc++ headers like <string>)
+          export CC="$(xcrun --sdk iphoneos --find clang)"
+          export CXX="$(xcrun --sdk iphoneos --find clang++)"
 
           rm -rf packages
           mkdir -p packages
@@ -71,7 +83,7 @@ jobs:
           cp control.template control
           sed -i '' 's/{{.depends}}/libkrw/g' control
 
-          USE_LIBKRW=1 gmake -j$(sysctl -n hw.ncpu) package FINALPACKAGE=1
+          USE_LIBKRW=1 gmake -j"$(sysctl -n hw.ncpu)" package FINALPACKAGE=1
 
           echo "::endgroup::"
 
